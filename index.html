@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AES-GCM Encryption Tool using Forge. Enhance your data security with this tool.">
+    <meta name="keywords" content="AES, GCM, Encryption, Security, Forge">
+    <meta name="author" content="Your Name">
+    <title>AES-GCM Encryption Tool</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/0.10.0/forge.min.js" defer></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 100%;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        h1 {
+            margin-top: 0;
+            color: #333;
+            font-size: 24px;
+            text-align: center;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .input-group input[type="password"],
+        .input-group input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .input-group input:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        .button-group {
+            text-align: center;
+        }
+        .button-group button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: #fff;
+            font-size: 16px;
+        }
+        .button-group button:hover {
+            background-color: #0056b3;
+        }
+        .button-group button:focus {
+            outline: none;
+        }
+        #result {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            word-break: break-all;
+            resize: vertical;
+            overflow: auto;
+            height: 100px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .error {
+            color: red;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AES-GCM Encryption Tool</h1>
+        <div class="input-group">
+            <label for="passphrase">Passphrase (64 hex characters):</label>
+            <input type="password" id="passphrase" placeholder="Enter passphrase" autocomplete="current-password">
+        </div>
+        <div class="input-group">
+            <label for="data">Data:</label>
+            <input type="text" id="data" placeholder="Enter data">
+        </div>
+        <div class="button-group">
+            <button onclick="performAction('encrypt')">Encrypt</button>
+            <button onclick="performAction('decrypt')">Decrypt</button>
+            <button onclick="copyToClipboard()">Copy to Clipboard</button>
+        </div>
+        <div class="input-group">
+            <label for="result">Result:</label>
+            <textarea id="result" readonly></textarea>
+        </div>
+        <div id="error" class="error"></div>
+    </div>
+
+    <script>
+        function generateRandomBytes(size) {
+            return forge.random.getBytesSync(size);
+        }
+
+        function generateKey(passphrase, salt) {
+            return forge.pkcs5.pbkdf2(forge.util.hexToBytes(passphrase), salt, 10000, 32, 'sha256');
+        }
+
+        function aesGcmEncrypt(data, passphrase) {
+            const salt = generateRandomBytes(16);
+            const key = generateKey(passphrase, salt);
+            const iv = generateRandomBytes(12);
+
+            const cipher = forge.cipher.createCipher('AES-GCM', key);
+            cipher.start({ iv: iv });
+            cipher.update(forge.util.createBuffer(data, 'utf8'));
+            cipher.finish();
+
+            const encryptedData = {
+                ciphertext: forge.util.encode64(cipher.output.getBytes()),
+                iv: forge.util.encode64(iv),
+                tag: forge.util.encode64(cipher.mode.tag.getBytes()),
+                salt: forge.util.encode64(salt)
+            };
+
+            const json = JSON.stringify(encryptedData);
+            return forge.util.encode64(json);
+        }
+
+        function aesGcmDecrypt(encryptedBase64, passphrase) {
+            try {
+                const json = forge.util.decode64(encryptedBase64);
+                const encryptedData = JSON.parse(json);
+
+                const iv = forge.util.decode64(encryptedData.iv);
+                                const tag = forge.util.decode64(encryptedData.tag);
+                const ciphertext = forge.util.decode64(encryptedData.ciphertext);
+                const salt = forge.util.decode64(encryptedData.salt);
+
+                const key = generateKey(passphrase, salt);
+
+                const decipher = forge.cipher.createDecipher('AES-GCM', key);
+                decipher.start({ iv: iv, tag: tag });
+                decipher.update(forge.util.createBuffer(ciphertext));
+
+                if (decipher.finish()) {
+                    return decipher.output.toString('utf8');
+                } else {
+                    throw new Error('Decryption failed.');
+                }
+            } catch (error) {
+                throw new Error('Decryption failed: ' + error.message);
+            }
+        }
+
+        function isValidPassphrase(passphrase) {
+            // Ensure the passphrase is exactly 64 hex characters (32 bytes)
+            return /^[0-9a-fA-F]{64}$/.test(passphrase.trim());
+        }
+
+        function performAction(action) {
+            const data = document.getElementById('data').value;
+            const passphrase = document.getElementById('passphrase').value.trim();
+
+            const resultElement = document.getElementById('result');
+            const errorElement = document.getElementById('error');
+
+            if (!isValidPassphrase(passphrase)) {
+                errorElement.textContent = "Passphrase must be exactly 64 hexadecimal characters.";
+                return;
+            }
+
+            if (!data || !passphrase) {
+                errorElement.textContent = "Data and passphrase must not be empty.";
+                return;
+            }
+
+            try {
+                if (action === 'encrypt') {
+                    const encryptedBase64 = aesGcmEncrypt(data, passphrase);
+                    resultElement.value = encryptedBase64;
+                    errorElement.textContent = "";
+                } else if (action === 'decrypt') {
+                    const decryptedData = aesGcmDecrypt(data, passphrase);
+                    resultElement.value = decryptedData;
+                    errorElement.textContent = "";
+                } else {
+                    errorElement.textContent = "Invalid action. Please enter 'encrypt' or 'decrypt'.";
+                }
+            } catch (error) {
+                errorElement.textContent = "An error occurred during the operation.";
+            }
+        }
+
+        function copyToClipboard() {
+            const resultElement = document.getElementById('result');
+            resultElement.select();
+            try {
+                const successful = document.execCommand('copy');
+                const msg = successful ? 'successful' : 'unsuccessful';
+                alert('Copying text command was ' + msg);
+            } catch (err) {
+                alert('Oops, unable to copy');
+            }
+        }
+    </script>
+</body>
+</html>
